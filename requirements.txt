@@ -1,0 +1,11 @@
+aiogram>=3.0.0
+sqlalchemy>=2.0.0
+alembic
+asyncpg
+aiosqlite
+python-dotenv
+pydantic
+pydantic-settings
+uvloop; platform_system != "Windows"
+pytesseract
+Pillow
