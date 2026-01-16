@@ -1,0 +1,58 @@
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: rentbot_postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-rent_bot}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASS:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - bot_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    build:
+      context: .
+      target: production
+    container_name: rentbot_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Bot configuration
+      BOT_TOKEN: ${BOT_TOKEN}
+      ADMIN_IDS: ${ADMIN_IDS}
+      
+      # Database configuration
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASS: ${DB_PASS:-postgres}
+      DB_NAME: ${DB_NAME:-rent_bot}
+      DB_PORT: 5432
+      
+      # API keys (optional)
+      DADATA_API_KEY: ${DADATA_API_KEY:-}
+      DADATA_SECRET_KEY: ${DADATA_SECRET_KEY:-}
+      YOOMONEY_TOKEN: ${YOOMONEY_TOKEN:-}
+      YOOMONEY_ACCOUNT: ${YOOMONEY_ACCOUNT:-}
+      KVARTPLATA_API_KEY: ${KVARTPLATA_API_KEY:-}
+      
+    networks:
+      - bot_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  bot_network:
+    driver: bridge

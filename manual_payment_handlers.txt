@@ -1,0 +1,76 @@
+# Manual payment marking handlers
+
+@router.callback_query(F.data.startswith("mark_paid_"))
+async def confirm_mark_paid(call: CallbackQuery, session: AsyncSession):
+    """Confirm manual payment marking"""
+    from bot.utils.ui import UIMessages
+    from bot.database.models import RentCharge, CommCharge
+    
+    parts = call.data.split("_")
+    charge_type = parts[2]  # "rent" or "comm"
+    charge_id = int(parts[3])
+    
+    # Get charge details
+    if charge_type == "rent":
+        charge = await session.get(RentCharge, charge_id)
+    else:
+        charge = await session.get(CommCharge, charge_id)
+    
+    if not charge:
+        await call.answer("❌ Начисление не найдено", show_alert=True)
+        return
+    
+    tenant_name = charge.stay.tenant.full_name if charge.stay and charge.stay.tenant else "?"
+    
+    text = UIMessages.header("⚠️ Подтверждение ручной отметки", "")
+    text += f"\n<b>Жилец:</b> {tenant_name}\n"
+    text += f"<b>Сумма:</b> {float(charge.amount):.2f} ₽\n\n"
+    text += "Вы уверены, что хотите отметить это начисление как оплаченное?\n\n"
+    text += UIMessages.info_box("Это создаст виртуальный платёж без чека.")
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Да, отметить", callback_data=f"confirm_mark_{charge_type}_{charge_id}"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="report_debtors")
+        ]
+    ])
+    
+    await call.message.edit_text(text, reply_markup=kb)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("confirm_mark_"))
+async def execute_mark_paid(call: CallbackQuery, session: AsyncSession):
+    """Execute manual payment marking"""
+    from bot.services.payment_service import mark_charge_as_paid
+    from bot.utils.ui import UIMessages
+    
+    parts = call.data.split("_")
+    charge_type = parts[2]
+    charge_id = int(parts[3])
+    admin_id = call.from_user.id
+    admin_name = call.from_user.full_name or "Admin"
+    
+    try:
+        payment = await mark_charge_as_paid(
+            session, charge_id, charge_type, admin_id,
+            admin_name=admin_name,
+            note=f"Отмечено вручную админом {admin_name}"
+        )
+        
+        text = UIMessages.success("Начисление отмечено как оплаченное")
+        text += f"\n\n<b>Начисление:</b> #{charge_id}\n"
+        text += f"<b>Виртуальный платёж:</b> #{payment.id}\n"
+        text += f"<b>Отметил:</b> {admin_name}"
+        
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ К списку должников", callback_data="report_debtors")]
+        ])
+        
+        await call.message.edit_text(text, reply_markup=kb)
+        await call.answer("✅ Готово!", show_alert=False)
+        
+    except ValueError as e:
+        await call.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+    except Exception as e:
+        await call.answer(f"❌ Неизвестная ошибка: {str(e)}", show_alert=True)

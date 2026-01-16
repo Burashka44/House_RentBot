@@ -1,0 +1,19 @@
+services:
+  bot:
+    build:
+      context: .
+      target: development
+    container_name: rentbot_app_dev
+    volumes:
+      # Mount source code for hot reload
+      - ./bot:/app/bot
+      - ./migrations:/app/migrations
+      - ./alembic.ini:/app/alembic.ini
+    environment:
+      # Enable hot reload for aiogram
+      PYTHONUNBUFFERED: 1
+      # Development mode
+      DEBUG: "true"
+    command: python -m bot.main
+    # Override restart policy for dev
+    restart: "no"

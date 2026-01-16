@@ -1,0 +1,51 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+*.log
+
+# Test files
+test_*.py
+check_*.py
+tests/
+.pytest_cache/
+
+# Backups
+backups/
+*.zip
+
+# Data files
+*.csv
+*.pcap
+
+# Git
+.git/
+.gitignore
+
+# Documentation (kept in repo, not in image)
+*.md
+!README.md
+
+# System files
+.DS_Store
+Thumbs.db
