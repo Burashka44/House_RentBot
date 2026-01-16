@@ -46,6 +46,12 @@ async def create_admin(
 
 async def deactivate_admin(session: AsyncSession, tg_id: int) -> bool:
     """Deactivate admin (soft delete)"""
+    from bot.config import config
+    
+    # SECURITY: Cannot deactivate OWNER
+    if tg_id in config.OWNER_IDS:
+        return False
+    
     user = await get_user_by_tg_id(session, tg_id)
     if user:
         user.is_active = False

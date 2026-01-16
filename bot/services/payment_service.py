@@ -294,6 +294,7 @@ async def mark_charge_as_paid(
         ValueError: If charge not found or already paid
     """
     from datetime import datetime, timezone
+    from bot.config import config
     
     # Get the charge
     if charge_type == "rent":
@@ -308,6 +309,22 @@ async def mark_charge_as_paid(
     
     if charge.status == ChargeStatus.paid.value:
         raise ValueError(f"Charge {charge_type}#{charge_id} is already paid")
+    
+    # SECURITY: Check authorization - admin can only mark their own charges
+    # Load stay with rental_object to check owner_id
+    from sqlalchemy.orm import selectinload
+    stmt = select(TenantStay).where(TenantStay.id == charge.stay_id).options(
+        selectinload(TenantStay.rental_object)
+    )
+    result = await session.execute(stmt)
+    stay = result.scalar_one_or_none()
+    
+    if not stay or not stay.rental_object:
+        raise ValueError("Stay or rental object not found")
+    
+    # Only owner of the object or OWNER can mark payment
+    if admin_id not in config.OWNER_IDS and stay.rental_object.owner_id != admin_id:
+        raise ValueError("У вас нет прав на отметку этого начисления")
     
     # Create virtual payment
     payment = Payment(
@@ -345,4 +362,5 @@ async def mark_charge_as_paid(
     await session.commit()
     
     return payment
+
 

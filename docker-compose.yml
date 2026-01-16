@@ -9,8 +9,8 @@ services:
       POSTGRES_PASSWORD: ${DB_PASS:-postgres}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # SECURITY: PostgreSQL is only accessible within Docker network
+    # External access disabled for production security
     networks:
       - bot_network
     healthcheck:
