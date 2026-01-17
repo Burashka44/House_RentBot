@@ -356,9 +356,113 @@ GET    /api/admin/invites        # List invite codes
 POST   /api/admin/invites        # Generate invite
 ```
 
+### Bot Management
+```
+GET    /api/bots                 # List all bots
+GET    /api/bots/active          # Get active bot
+GET    /api/bots/:id             # Get bot details
+POST   /api/bots                 # Create new bot
+PUT    /api/bots/:id             # Update bot settings
+DELETE /api/bots/:id             # Delete bot (soft delete)
+POST   /api/bots/:id/activate    # Activate bot
+POST   /api/bots/restart         # Restart bot with new token
+```
+
+### Analytics & Statistics
+```
+GET    /api/analytics/overview           # Dashboard overview
+GET    /api/analytics/revenue            # Revenue statistics
+GET    /api/analytics/occupancy          # Occupancy rates
+GET    /api/analytics/payments-timeline  # Payment history timeline
+GET    /api/analytics/top-debtors        # Top debtors list
+GET    /api/analytics/object-performance # Performance by object
+```
+
+### History
+```
+GET    /api/history/payments      # Payment history
+GET    /api/history/charges       # Charge history
+GET    /api/history/stays         # Rental history
+GET    /api/history/support       # Support ticket history
+GET    /api/history/changes       # Audit log (admin changes)
+```
+
 ---
 
 ## Data Models (JSON)
+
+### Bot Settings
+```json
+{
+  "id": 1,
+  "bot_name": "MyRentBot",
+  "bot_token": "7123456789:AAH***",  // Masked
+  "bot_username": "@MyRentBot",
+  "webhook_url": "https://example.com/webhook",
+  "is_active": true,
+  "is_deleted": false,
+  "created_at": "2024-01-01T10:00:00Z",
+  "created_by": 123456789
+}
+```
+
+### Analytics Overview
+```json
+{
+  "period": "2024-01",
+  "total_revenue": 250000.00,
+  "total_payments": 45,
+  "total_charges": 50,
+  "occupancy_rate": 0.85,
+  "active_tenants": 12,
+  "pending_debt": 25000.00,
+  "objects": {
+    "total": 15,
+    "occupied": 12,
+    "available": 3
+  }
+}
+```
+
+### Payment History
+```json
+{
+  "payments": [
+    {
+      "id": 456,
+      "date": "2024-01-05",
+      "tenant": "Иван Иванов",
+      "object": "ул. Ленина, 10, кв. 5",
+      "amount": 25000.00,
+      "type": "rent",
+      "method": "online",
+      "status": "confirmed"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 20,
+    "total": 150
+  }
+}
+```
+
+### Revenue Statistics
+```json
+{
+  "period": "2024",
+  "monthly_data": [
+    {
+      "month": "2024-01",
+      "revenue": 250000.00,
+      "payments_count": 45,
+      "average_payment": 5555.56
+    }
+  ],
+  "total_revenue": 3000000.00,
+  "growth_rate": 0.15
+}
+```
 
 ### Tenant
 ```json
