@@ -183,6 +183,8 @@ async def cmd_help(message: Message, state: FSMContext):
 
 def _build_tenant_help() -> str:
     """Build comprehensive help for tenants"""
+    from bot.utils.ui import UIMessages
+    
     text = UIMessages.header("Справка для жильцов", "❔")
     
     text += UIMessages.section("📸 Загрузка чеков")
@@ -221,6 +223,8 @@ def _build_tenant_help() -> str:
 
 def _build_admin_help(is_owner: bool) -> str:
     """Build comprehensive help for admins"""
+    from bot.utils.ui import UIMessages, UIEmojis
+    
     text = UIMessages.header("Справка для администраторов", "👨‍💼")
     
     text += UIMessages.section("🏠 Управление адресами")
