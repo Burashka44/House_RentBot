@@ -23,11 +23,15 @@ class OCRManager:
         from bot.config import config
         
         # Try AI model first (if configured)
-        if hasattr(config, 'OLLAMA_HOST') and hasattr(config, 'OLLAMA_MODEL'):
-            ai_provider = AIModelProvider(config.OLLAMA_HOST, config.OLLAMA_MODEL)
-            if await ai_provider.check_availability():
-                self.primary_provider = ai_provider
-                logging.info(f"AI OCR provider initialized: {ai_provider.name}")
+        if (hasattr(config, 'OLLAMA_HOST') and config.OLLAMA_HOST and 
+            hasattr(config, 'OLLAMA_MODEL') and config.OLLAMA_MODEL):
+            try:
+                ai_provider = AIModelProvider(config.OLLAMA_HOST, config.OLLAMA_MODEL)
+                if await ai_provider.check_availability():
+                    self.primary_provider = ai_provider
+                    logging.info(f"AI OCR provider initialized: {ai_provider.name}")
+            except Exception as e:
+                logging.warning(f"Failed to initialize AI OCR provider: {e}")
         
         # Pytesseract as fallback
         pytesseract_provider = PytesseractProvider()

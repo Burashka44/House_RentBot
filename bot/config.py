@@ -28,9 +28,10 @@ class Config:
     ADMIN_IDS = _env_admin_ids.copy()
     OWNER_IDS = _env_owner_ids.copy()
 
-    # Ollama Settings
-    OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://192.168.1.220:11434")
-    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2-vision:latest")
+    # Ollama Settings (OPTIONAL - for AI OCR)
+    # If not set, bot will use Tesseract OCR as fallback
+    OLLAMA_HOST = os.getenv("OLLAMA_HOST", None)  # None = disabled
+    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llava")
 
     # DaData Settings (Address Normalization)
     DADATA_API_KEY = os.getenv("DADATA_API_KEY")  # Suggestions API
