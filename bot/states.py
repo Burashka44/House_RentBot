@@ -67,3 +67,6 @@ class LinkRSOState(StatesGroup):
 class AddUKState(StatesGroup):
     waiting_for_name = State()
     waiting_for_inn = State()
+
+class CancelPaymentState(StatesGroup):
+    waiting_for_reason = State()

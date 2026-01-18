@@ -6,7 +6,7 @@ from bot.config import config
 from sqlalchemy.ext.asyncio import AsyncSession
 from bot.services.stay_service import create_object, get_all_objects, create_stay
 from bot.services.tenant_service import get_tenant_by_tg_id
-from bot.states import AddObjectState, AddStayState, EditObjectState, EditStayState, EditTenantState, AddTenantState, AddContactState, InviteAdminState, InviteTenantState, AdminMessageState, ManualPaymentState, AddRSOState, LinkRSOState, AddUKState
+from bot.states import AddObjectState, AddStayState, EditObjectState, EditStayState, EditTenantState, AddTenantState, AddContactState, InviteAdminState, InviteTenantState, AdminMessageState, ManualPaymentState, AddRSOState, LinkRSOState, AddUKState, CancelPaymentState
 from datetime import date, datetime, timezone
 import logging
 from pydantic import ValidationError
@@ -2667,3 +2667,127 @@ async def show_obj_stats(call: CallbackQuery, session: AsyncSession):
     await call.message.edit_text(text, reply_markup=kb)
     await call.answer()
 
+
+# --- Payment Cancellation ---
+
+@router.callback_query(F.data.startswith("cancel_payment:"))
+async def cancel_payment_start(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession
+):
+    """Start payment cancellation process"""
+    from bot.utils.ui import UIMessages
+    from bot.states import CancelPaymentState
+    
+    payment_id = int(call.data.split(":")[1])
+    
+    # Save payment_id to state
+    await state.update_data(cancel_payment_id=payment_id)
+    
+    # Ask for reason
+    text = "❓ Укажите причину отмены платежа:"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action")]
+    ])
+    
+    await call.message.answer(text, reply_markup=kb)
+    await state.set_state(CancelPaymentState.waiting_for_reason)
+    await call.answer()
+
+
+@router.message(CancelPaymentState.waiting_for_reason)
+async def cancel_payment_reason(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession
+):
+    """Process cancellation reason and show confirmation"""
+    from bot.utils.ui import UIMessages, UIEmojis
+    
+    reason = message.text
+    data = await state.get_data()
+    payment_id = data['cancel_payment_id']
+    
+    # Show confirmation
+    text = UIMessages.header("Подтверждение отмены", UIEmojis.WARNING)
+    text += f"\n💳 Платёж: #{payment_id}\n"
+    text += f"📝 Причина: {reason}\n\n"
+    text += "⚠️ Это действие:\n"
+    text += "• Откатит распределение платежа\n"
+    text += "• Вернёт начисления в статус 'неоплачено'\n"
+    text += "• Пометит платёж как 'отменён'\n"
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="✅ Подтвердить отмену",
+                callback_data=f"confirm_cancel:{payment_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="❌ Отмена",
+                callback_data="cancel_action"
+            )
+        ]
+    ])
+    
+    await state.update_data(cancel_reason=reason)
+    await message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("confirm_cancel:"))
+async def confirm_cancel_payment(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession
+):
+    """Execute payment cancellation"""
+    from bot.utils.ui import UIMessages, UIEmojis
+    from bot.services.payment_service import cancel_payment
+    
+    payment_id = int(call.data.split(":")[1])
+    data = await state.get_data()
+    reason = data.get('cancel_reason', 'Не указана')
+    admin_id = call.from_user.id
+    
+    try:
+        # Cancel payment
+        success = await cancel_payment(
+            session,
+            payment_id,
+            admin_id,
+            reason
+        )
+        
+        if success:
+            text = UIMessages.success(f"Платёж #{payment_id} успешно отменён")
+            text += f"\n\n📝 Причина: {reason}"
+            await call.message.edit_text(text)
+            
+            logging.info(f"Payment {payment_id} cancelled by admin {admin_id}")
+        
+    except PermissionError as e:
+        text = UIMessages.error(f"Нет прав: {e}")
+        await call.message.edit_text(text)
+    except ValueError as e:
+        text = UIMessages.error(f"Ошибка: {e}")
+        await call.message.edit_text(text)
+    except Exception as e:
+        text = UIMessages.error(f"Неизвестная ошибка: {e}")
+        await call.message.edit_text(text)
+        logging.error(f"Error cancelling payment {payment_id}: {e}")
+    
+    await state.clear()
+    await call.answer()
+
+
+@router.callback_query(F.data == "cancel_action")
+async def cancel_action_handler(call: CallbackQuery, state: FSMContext):
+    """Cancel current action"""
+    from bot.utils.ui import UIMessages
+    
+    await state.clear()
+    await call.message.edit_text(UIMessages.info_box("Действие отменено"))
+    await call.answer()
