@@ -198,73 +198,36 @@ async def parse_receipt_with_ollama(file_bytes: bytes) -> Optional[ParsedReceipt
     return None
 
 
-async def parse_receipt(file_bytes: bytes) -> ParsedReceipt:
+
+async def parse_receipt(file_bytes: bytes, is_pdf: bool = False) -> ParsedReceipt:
     """
-    Parse receipt image using Ollama (Primary) or Tesseract OCR (Fallback).
+    Parse receipt using OCR manager (auto-selects best provider).
+    
+    Args:
+        file_bytes: Image or PDF file bytes
+        is_pdf: Whether the file is a PDF
+    
+    Returns:
+        ParsedReceipt with extracted data
     """
     import logging
-    import io
+    from bot.services.ocr import ocr_manager
     
-    # 1. Try Ollama
-    ollama_res = await parse_receipt_with_ollama(file_bytes)
-    if ollama_res:
-        logging.info("Receipt parsed by Ollama successfully")
-        return ollama_res
-
-    logging.info("Ollama failed/skipped, falling back to Tesseract")
-
-    # 2. Fallback to Tesseract
-    ocr_text = ""
-    try:
-        import pytesseract
-        from PIL import Image
-        
-        # Load image from bytes
-        try:
-             image = Image.open(io.BytesIO(file_bytes))
-             # Convert to RGB to handle alpha or indexed (sometimes issues)
-             # image = image.convert('RGB') 
-             
-             # Perform OCR
-             custom_config = r'--oem 3 --psm 6'
-             ocr_text = pytesseract.image_to_string(image, lang='rus+eng', config=custom_config)
-        except Exception:
-             # Could be PDF or Corrupt image passed to PIL
-             pass
-        
-    except ImportError:
-        logging.warning("pytesseract or Pillow not installed. OCR skipped.")
-        ocr_text = ""
-    except Exception as e:
-        logging.error(f"OCR Error: {e}")
-        ocr_text = ""
-
-    # ... Extract Amount/Date from OCR text (Legacy logic) ...
-    amount = extract_amount_from_text(ocr_text)
-    parsed_date = extract_date_from_text(ocr_text)
-    receiver = extract_receiver_from_text(ocr_text)
+    # Use OCR manager (auto-selects Ollama or Tesseract)
+    ocr_result = await ocr_manager.recognize(file_bytes, is_pdf=is_pdf)
     
-    # Calculate confidence
-    confidence = 0.0
-    if amount:
-        confidence += 0.4
-    if parsed_date:
-        confidence += 0.3
-    if receiver:
-        confidence += 0.3
-        
-    # If text exists but nothing found -> low confidence
-    if ocr_text and confidence == 0:
-        confidence = 0.1
+    logging.info(f"OCR result: amount={ocr_result.amount}, confidence={ocr_result.confidence}, provider={ocr_result.metadata.get('provider')}")
     
+    # Convert OCRResult to ParsedReceipt
     return ParsedReceipt(
-        text=ocr_text,
-        amount=amount, 
-        parsed_date=parsed_date,
-        receiver=receiver,
-        purpose="",
-        confidence=confidence
+        text=ocr_result.text,
+        amount=ocr_result.amount,
+        parsed_date=ocr_result.date,
+        receiver=ocr_result.metadata.get('receiver', ''),
+        purpose='',
+        confidence=ocr_result.confidence
     )
+
 
 # --- Validation Logic ---
 async def validate_receipt_logic(
