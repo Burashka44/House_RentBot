@@ -70,3 +70,9 @@ class AddUKState(StatesGroup):
 
 class CancelPaymentState(StatesGroup):
     waiting_for_reason = State()
+
+class ApproveReceiptState(StatesGroup):
+    waiting_for_amount = State()
+
+class RejectReceiptState(StatesGroup):
+    waiting_for_reason = State()

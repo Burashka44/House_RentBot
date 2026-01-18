@@ -6,7 +6,7 @@ from bot.config import config
 from sqlalchemy.ext.asyncio import AsyncSession
 from bot.services.stay_service import create_object, get_all_objects, create_stay
 from bot.services.tenant_service import get_tenant_by_tg_id
-from bot.states import AddObjectState, AddStayState, EditObjectState, EditStayState, EditTenantState, AddTenantState, AddContactState, InviteAdminState, InviteTenantState, AdminMessageState, ManualPaymentState, AddRSOState, LinkRSOState, AddUKState, CancelPaymentState
+from bot.states import AddObjectState, AddStayState, EditObjectState, EditStayState, EditTenantState, AddTenantState, AddContactState, InviteAdminState, InviteTenantState, AdminMessageState, ManualPaymentState, AddRSOState, LinkRSOState, AddUKState, CancelPaymentState, ApproveReceiptState, RejectReceiptState
 from datetime import date, datetime, timezone
 import logging
 from pydantic import ValidationError
@@ -2791,3 +2791,186 @@ async def cancel_action_handler(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text(UIMessages.info_box("Действие отменено"))
     await call.answer()
+
+
+# --- Receipt Approval/Rejection ---
+
+@router.callback_query(F.data.startswith("approve_receipt:"))
+async def approve_receipt_handler(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession
+):
+    """Approve receipt and ask for amount"""
+    from bot.states import ApproveReceiptState
+    
+    payment_id = int(call.data.split(":")[1])
+    
+    # Save to state
+    await state.update_data(approve_payment_id=payment_id)
+    
+    # Ask for amount
+    text = "💰 Укажите сумму платежа (в рублях):"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action")]
+    ])
+    
+    await call.message.answer(text, reply_markup=kb)
+    await state.set_state(ApproveReceiptState.waiting_for_amount)
+    await call.answer()
+
+
+@router.message(ApproveReceiptState.waiting_for_amount)
+async def process_receipt_amount(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession
+):
+    """Process amount and confirm payment"""
+    from bot.services.payment_service import allocate_payment
+    from bot.utils.ui import UIMessages
+    from bot.database.models import Payment
+    from datetime import datetime
+    
+    try:
+        amount = float(message.text.replace(',', '.').replace(' ', ''))
+        
+        if amount <= 0:
+            await message.answer("❌ Сумма должна быть больше нуля")
+            return
+        
+        data = await state.get_data()
+        payment_id = data['approve_payment_id']
+        
+        # Get payment with stay
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        stmt = select(Payment).where(Payment.id == payment_id).options(
+            selectinload(Payment.stay).selectinload(TenantStay.tenant)
+        )
+        result = await session.execute(stmt)
+        payment = result.scalar_one_or_none()
+        
+        if not payment:
+            await message.answer("❌ Платёж не найден")
+            await state.clear()
+            return
+        
+        # Update payment
+        payment.amount = amount
+        payment.total_amount = amount
+        payment.status = 'confirmed'
+        payment.confirmed_at = datetime.now()
+        payment.confirmed_by = message.from_user.id
+        
+        await session.commit()
+        
+        # Allocate payment
+        await allocate_payment(session, payment_id)
+        
+        # Notify tenant
+        stay = payment.stay
+        if stay and stay.tenant and stay.tenant.tg_id:
+            tenant_text = UIMessages.success("Ваш платёж одобрен!")
+            tenant_text += f"\n\n💰 Сумма: {amount:,.2f} ₽"
+            tenant_text += f"\n📅 Дата: {datetime.now().strftime('%d.%m.%Y')}"
+            
+            try:
+                await message.bot.send_message(
+                    stay.tenant.tg_id,
+                    tenant_text
+                )
+            except Exception as e:
+                logging.error(f"Failed to notify tenant: {e}")
+        
+        # Confirm to admin
+        text = UIMessages.success(f"Платёж #{payment_id} одобрен")
+        text += f"\n\n💰 Сумма: {amount:,.2f} ₽"
+        await message.answer(text)
+        
+        await state.clear()
+        
+    except ValueError:
+        await message.answer("❌ Неверный формат суммы. Введите число (например: 25000 или 25000.50)")
+
+
+@router.callback_query(F.data.startswith("reject_receipt:"))
+async def reject_receipt_handler(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession
+):
+    """Reject receipt and ask for reason"""
+    from bot.states import RejectReceiptState
+    
+    payment_id = int(call.data.split(":")[1])
+    
+    await state.update_data(reject_payment_id=payment_id)
+    
+    text = "📝 Укажите причину отклонения чека:"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action")]
+    ])
+    
+    await call.message.answer(text, reply_markup=kb)
+    await state.set_state(RejectReceiptState.waiting_for_reason)
+    await call.answer()
+
+
+@router.message(RejectReceiptState.waiting_for_reason)
+async def process_reject_reason(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession
+):
+    """Process rejection reason and notify tenant"""
+    from bot.utils.ui import UIMessages
+    from bot.database.models import Payment
+    from datetime import datetime
+    
+    reason = message.text
+    data = await state.get_data()
+    payment_id = data['reject_payment_id']
+    
+    # Get payment with stay
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    stmt = select(Payment).where(Payment.id == payment_id).options(
+        selectinload(Payment.stay).selectinload(TenantStay.tenant)
+    )
+    result = await session.execute(stmt)
+    payment = result.scalar_one_or_none()
+    
+    if not payment:
+        await message.answer("❌ Платёж не найден")
+        await state.clear()
+        return
+    
+    # Update payment
+    payment.status = 'rejected'
+    if not payment.meta_json:
+        payment.meta_json = {}
+    payment.meta_json['reject_reason'] = reason
+    payment.meta_json['rejected_by'] = message.from_user.id
+    payment.meta_json['rejected_at'] = datetime.now().isoformat()
+    
+    await session.commit()
+    
+    # Notify tenant
+    stay = payment.stay
+    if stay and stay.tenant and stay.tenant.tg_id:
+        tenant_text = UIMessages.error("Ваш чек отклонён")
+        tenant_text += f"\n\n📝 Причина: {reason}"
+        tenant_text += "\n\n💡 Пожалуйста, загрузите новый чек с исправлениями"
+        
+        try:
+            await message.bot.send_message(
+                stay.tenant.tg_id,
+                tenant_text
+            )
+        except Exception as e:
+            logging.error(f"Failed to notify tenant: {e}")
+    
+    # Confirm to admin
+    await message.answer(UIMessages.success(f"Чек #{payment_id} отклонён"))
+    await state.clear()

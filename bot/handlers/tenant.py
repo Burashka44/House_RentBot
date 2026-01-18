@@ -272,7 +272,7 @@ async def _process_receipt_impl(message: Message, tenant, file_id: str, state: F
         else:
             text = UIMessages.header("Чек отклонён", UIEmojis.ERROR)
             text += UIMessages.field("Причина", reason, UIEmojis.WARNING)
-            text += "\n" + UIMessages.info_box("Пожалуйста, гарантируйте качество фото. PDF файлы пока не поддерживаются (пришлите скриншот).")
+            text += "\n" + UIMessages.info_box("Пожалуйста, убедитесь в качестве фото или документа.")
             await message.answer(text)
             
     except Exception as e:
