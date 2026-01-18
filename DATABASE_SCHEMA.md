@@ -2,7 +2,7 @@
 
 ## Quick Reference
 
-**Total Tables:** 19
+**Total Tables:** 20
 **Database:** PostgreSQL 15+
 **ORM:** SQLAlchemy 2.0 (async)
 
@@ -60,6 +60,7 @@ erDiagram
 ### 6. Settings
 - `tenant_settings` - Tenant preferences
 - `object_settings` - Object configuration
+- `bot_settings` - Bot configuration (NEW)
 
 ---
 

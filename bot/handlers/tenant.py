@@ -269,8 +269,6 @@ async def _process_receipt_impl(message: Message, tenant, file_id: str, state: F
                 text += UIMessages.info_box("Сумма не распознана автоматически. Чек отправлен администратору на ручную проверку.")
             
             await message.answer(text)
-            
-            # TODO: Notify Admins here
         else:
             text = UIMessages.header("Чек отклонён", UIEmojis.ERROR)
             text += UIMessages.field("Причина", reason, UIEmojis.WARNING)

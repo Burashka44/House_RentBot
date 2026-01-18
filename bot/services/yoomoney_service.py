@@ -265,7 +265,7 @@ async def generate_payment_links_for_tenant(session, tenant_id: int, period: str
     for link in rso_links:
         provider = link.provider
         
-        # TODO: Calculate exact amount from charges
+        # Placeholder: YooMoney integration - calculate amount from charges
         # For now, use placeholder
         amount = Decimal("1500.00")
         

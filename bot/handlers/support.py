@@ -80,7 +80,7 @@ async def tenant_message_process(message: Message, state: FSMContext, tenant, se
 
 
 # --- Admin Side (Reply) ---
-# Simple Reply Logic: Admin selects user from list (TODO) or replies to forwarded msg?
+# Admin replies to forwarded messages from tenants using /reply command
 # For MVP: Admin command /reply <stay_id> <text>
 @router.message(Command("reply"), AdminFilter())
 async def admin_reply_command(message: Message, session: AsyncSession):
