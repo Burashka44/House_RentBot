@@ -364,3 +364,118 @@ async def mark_charge_as_paid(
     return payment
 
 
+async def cancel_payment(
+    session: AsyncSession,
+    payment_id: int,
+    admin_id: int,
+    reason: str = "Отменено администратором"
+) -> bool:
+    """
+    Cancel a payment (for erroneous uploads).
+    
+    - Checks permissions (OWNER or object owner)
+    - Rolls back allocations
+    - Sets status = 'cancelled'
+    - Logs to meta_json
+    
+    Args:
+        session: Database session
+        payment_id: Payment to cancel
+        admin_id: Admin performing cancellation
+        reason: Cancellation reason
+    
+    Returns:
+        True if successful
+    
+    Raises:
+        ValueError: If payment not found or already processed
+        PermissionError: If admin lacks permission
+    """
+    from datetime import datetime
+    from bot.config import config
+    from sqlalchemy import delete
+    
+    # Get payment with stay and object
+    payment_stmt = (
+        select(Payment)
+        .where(Payment.id == payment_id)
+        .options(
+            selectinload(Payment.stay).selectinload(TenantStay.rental_object)
+        )
+    )
+    result = await session.execute(payment_stmt)
+    payment = result.scalar_one_or_none()
+    
+    if not payment:
+        raise ValueError(f"Payment {payment_id} not found")
+    
+    # Check status - can only cancel pending payments
+    if payment.status not in ['pending_manual', 'pending']:
+        raise ValueError(f"Cannot cancel payment with status: {payment.status}")
+    
+    # Security check: OWNER or object owner
+    is_owner = admin_id in config.OWNER_IDS
+    is_object_owner = (
+        payment.stay and 
+        payment.stay.rental_object and 
+        payment.stay.rental_object.owner_id == admin_id
+    )
+    
+    if not (is_owner or is_object_owner):
+        raise PermissionError("Only OWNER or object owner can cancel payments")
+    
+    # Rollback allocations
+    alloc_stmt = select(PaymentAllocation).where(
+        PaymentAllocation.payment_id == payment_id
+    )
+    alloc_result = await session.execute(alloc_stmt)
+    allocations = alloc_result.scalars().all()
+    
+    # For each allocation, revert charge status to pending
+    for alloc in allocations:
+        if alloc.charge_type == 'rent':
+            charge = await session.get(RentCharge, alloc.charge_id)
+        else:
+            charge = await session.get(CommCharge, alloc.charge_id)
+        
+        if charge:
+            # Check if charge has other payments
+            other_allocs_stmt = select(PaymentAllocation).where(
+                PaymentAllocation.charge_id == alloc.charge_id,
+                PaymentAllocation.charge_type == alloc.charge_type,
+                PaymentAllocation.payment_id != payment_id
+            )
+            other_allocs_result = await session.execute(other_allocs_stmt)
+            other_allocs = other_allocs_result.scalars().all()
+            
+            # If no other payments, set to pending
+            if not other_allocs:
+                charge.status = ChargeStatus.pending.value
+    
+    # Delete allocations
+    await session.execute(
+        delete(PaymentAllocation).where(
+            PaymentAllocation.payment_id == payment_id
+        )
+    )
+    
+    # Update payment status and metadata
+    payment.status = 'cancelled'
+    payment.allocated_amount = 0
+    payment.unallocated_amount = 0
+    
+    # Add cancellation info to meta_json
+    if not payment.meta_json:
+        payment.meta_json = {}
+    
+    payment.meta_json['cancelled_by'] = admin_id
+    payment.meta_json['cancelled_at'] = datetime.now().isoformat()
+    payment.meta_json['cancel_reason'] = reason
+    payment.meta_json['original_status'] = payment.status
+    
+    await session.commit()
+    
+    import logging
+    logging.info(f"Payment {payment_id} cancelled by admin {admin_id}. Reason: {reason}")
+    
+    return True
