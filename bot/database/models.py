@@ -561,7 +561,6 @@ class AdminContact(Base):
     phone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     telegram: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
