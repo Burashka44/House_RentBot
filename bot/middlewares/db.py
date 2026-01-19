@@ -20,6 +20,7 @@ class DbSessionMiddleware(BaseMiddleware):
                 # Business logic must raise exceptions to trigger rollback.
                 await session.commit()
                 return result
-            except Exception:
+            except Exception as e:
                 await session.rollback()
+                logging.error(f"Database error in handler: {e}", exc_info=True)
                 raise

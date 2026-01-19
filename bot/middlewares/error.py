@@ -24,13 +24,15 @@ class GlobalErrorMiddleware(BaseMiddleware):
                         "⚠️ <b>Произошла техническая ошибка.</b>\n\n"
                         "Администраторы уже получили уведомление. Попробуйте повторить действие позже."
                     )
-                except Exception:
+                except Exception as e_inner:
+                    logging.error(f"Failed to send error message to user via Message.answer: {e_inner}")
                     pass # Failsafe if we can't send message
             
             elif isinstance(event, CallbackQuery):
                 try:
                     await event.answer("⚠️ Произошла ошибка. Попробуйте позже.", show_alert=True)
-                except Exception:
+                except Exception as e_inner:
+                    logging.error(f"Failed to send error message to user via CallbackQuery.answer: {e_inner}")
                     pass
             
             # Propagate exception? 

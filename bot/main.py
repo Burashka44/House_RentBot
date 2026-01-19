@@ -36,12 +36,16 @@ async def main():
     # Order: Outer -> Inner
     # 1. Error Handler (wraps everything)
     # 2. DB Session (provides session)
-    # 3. Consent (uses session)
-    from bot.middlewares.error import GlobalErrorMiddleware
-    from bot.middlewares.db import DbSessionMiddleware
+    from bot.middlewares.db import DatabaseMiddleware
+    from bot.middlewares.consent import ConsentMiddleware
+    from bot.middlewares.error import ErrorMiddleware
+    from bot.middlewares.rate_limit import RateLimitMiddleware, FileUploadRateLimiter
     
-    dp.update.middleware(GlobalErrorMiddleware())
-    dp.update.middleware(DbSessionMiddleware())
+    # Order matters: Error -> RateLimit -> DB -> Consent
+    dp.update.outer_middleware(ErrorMiddleware())
+    dp.update.middleware(RateLimitMiddleware(rate=10, per=60))  # 10 req/min
+    dp.message.middleware(FileUploadRateLimiter(rate=3, per=60))  # 3 files/min
+    dp.update.middleware(DatabaseMiddleware())
     dp.update.middleware(ConsentMiddleware())
 
     # Router registration - ORDER MATTERS!

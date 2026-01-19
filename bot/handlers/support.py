@@ -72,8 +72,8 @@ async def tenant_message_process(message: Message, state: FSMContext, tenant, se
                     await message.bot.send_photo(admin_id, photo=temp_file_id, caption=admin_text)
             else:
                     await message.bot.send_message(admin_id, admin_text)
-        except Exception:
-            pass 
+        except Exception as e:
+            logging.error(f"Failed to notify admin {admin_id} about support message: {e}") 
     
     await message.answer("✅ Сообщение отправлено администратору!")
     await state.clear()
