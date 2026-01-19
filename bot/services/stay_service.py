@@ -9,11 +9,25 @@ from bot.database.models import (
     ObjectStatus, StayOccupant, Tenant
 )
 
-async def create_object(session: AsyncSession, owner_id: int, address: str) -> RentalObject:
-    """Create a new rental object with default settings."""
-    # Check if exists? schema doesn't enforce unique address, but logical check might be good.
-    # For MVP, just create.
-    obj = RentalObject(owner_id=owner_id, address=address)
+async def create_object(session: AsyncSession, admin_id: int, address: str) -> RentalObject:
+    """Create a new rental object with default settings.
+    Only admins can create objects.
+    """
+    import logging
+    from bot.config import config
+    
+    # INPUT VALIDATION
+    if not address or len(address) < 5:
+        raise ValueError("Address too short (min 5 characters)")
+    if len(address) > 500:
+        raise ValueError("Address too long (max 500 characters)")
+    
+    # PERMISSION CHECK: Only admins can create objects
+    if admin_id not in (config.OWNER_IDS + config.ADMIN_IDS):
+        logging.warning(f"Permission denied: user {admin_id} tried to create object")
+        raise PermissionError("Only admins can create objects")
+    
+    obj = RentalObject(owner_id=admin_id, address=address)
     session.add(obj)
     await session.flush() # to get ID
     
@@ -33,7 +47,8 @@ async def get_all_objects(session: AsyncSession, owner_id: Optional[int] = None)
 async def create_stay(
     session: AsyncSession, 
     tenant_id: int, 
-    object_id: int, 
+    object_id: int,
+    admin_id: int,
     date_from: date, 
     rent_amount: float,
     rent_day: int,
@@ -44,8 +59,29 @@ async def create_stay(
     Create a new stay (tenant moves in).
     Validates that no other active stay exists for this object.
     Uses row-level lock to prevent concurrent stay creation.
+    Checks permissions (only object owner or OWNER can create).
+    Validates input parameters.
     Automatically creates a primary StayOccupant entry.
     """
+    
+    import logging
+    from bot.config import config
+    
+    # INPUT VALIDATION
+    if rent_amount <= 0:
+        raise ValueError("Rent amount must be positive")
+    if rent_amount > 1_000_000:
+        raise ValueError("Rent amount too large (max 1,000,000)")
+    if rent_day < 1 or rent_day > 31:
+        raise ValueError("Rent day must be between 1 and 31")
+    if comm_day < 1 or comm_day > 31:
+        raise ValueError("Comm day must be between 1 and 31")
+    if tax_rate < 0 or tax_rate > 100:
+        raise ValueError("Tax rate must be between 0 and 100")
+    
+    from datetime import timedelta
+    if date_from > date.today() + timedelta(days=365):
+        raise ValueError("Date too far in future (max 1 year)")
     
     # LOCK THE OBJECT ROW to prevent concurrent stay creation
     # This is critical to prevent race condition where two admins
@@ -60,6 +96,11 @@ async def create_stay(
     
     if not rental_object:
         raise ValueError(f"Объект ID {object_id} не найден")
+    
+    # PERMISSION CHECK: Only object owner or OWNER can create stay
+    if admin_id not in config.OWNER_IDS and rental_object.owner_id != admin_id:
+        logging.warning(f"Permission denied: admin {admin_id} tried to create stay on object {object_id} owned by {rental_object.owner_id}")
+        raise PermissionError("Only object owner can create stay")
     
     # VALIDATION: Check for existing active stay (with lock held)
     check_stmt = select(TenantStay).where(
@@ -108,17 +149,20 @@ async def create_stay(
     await session.commit()
     return stay
 
-async def end_stay(session: AsyncSession, stay_id: int) -> TenantStay:
+async def end_stay(session: AsyncSession, stay_id: int, admin_id: int) -> TenantStay:
     """
     End a stay (tenant moves out).
     Uses row-level lock to prevent concurrent archiving.
+    Checks permissions (only object owner or OWNER can end stay).
     """
     import logging
+    from bot.config import config
     
     # LOCK STAY ROW to prevent concurrent end_stay calls
     lock_stmt = (
         select(TenantStay)
         .where(TenantStay.id == stay_id)
+        .options(selectinload(TenantStay.rental_object))  # Load object for permission check
         .with_for_update()
     )
     result = await session.execute(lock_stmt)
@@ -126,6 +170,14 @@ async def end_stay(session: AsyncSession, stay_id: int) -> TenantStay:
     
     if not stay:
         raise ValueError(f"Stay {stay_id} not found")
+    
+    # PERMISSION CHECK: Only object owner or OWNER can end stay
+    if not stay.rental_object:
+        raise ValueError("Rental object not found")
+    
+    if admin_id not in config.OWNER_IDS and stay.rental_object.owner_id != admin_id:
+        logging.warning(f"Permission denied: admin {admin_id} tried to end stay {stay_id} on object owned by {stay.rental_object.owner_id}")
+        raise PermissionError("Only object owner can end stay")
     
     # IDEMPOTENCY CHECK: If already archived, return
     if stay.status == StayStatus.archived.value:
@@ -272,17 +324,38 @@ async def get_active_occupants(
 async def update_occupant_preferences(
     session: AsyncSession,
     occupant_id: int,
+    requesting_tg_id: int,
     receive_rent: Optional[bool] = None,
     receive_comm: Optional[bool] = None,
     receive_meter: Optional[bool] = None
 ) -> StayOccupant:
-    """Update notification preferences for an occupant."""
-    stmt = select(StayOccupant).where(StayOccupant.id == occupant_id)
+    """Update notification preferences for an occupant.
+    Only the occupant themselves or admins can update preferences.
+    """
+    import logging
+    from bot.config import config
+    
+    stmt = (
+        select(StayOccupant)
+        .where(StayOccupant.id == occupant_id)
+        .options(selectinload(StayOccupant.tenant))
+    )
     result = await session.execute(stmt)
     occupant = result.scalar_one_or_none()
     
     if not occupant:
         raise ValueError(f"Occupant ID {occupant_id} not found")
+    
+    # PERMISSION CHECK: Only the occupant themselves or admins
+    if not occupant.tenant:
+        raise ValueError("Tenant not found for occupant")
+    
+    is_own_preferences = occupant.tenant.tg_id == requesting_tg_id
+    is_admin = requesting_tg_id in (config.OWNER_IDS + config.ADMIN_IDS)
+    
+    if not (is_own_preferences or is_admin):
+        logging.warning(f"Permission denied: user {requesting_tg_id} tried to update preferences for occupant {occupant_id} (tenant {occupant.tenant.tg_id})")
+        raise PermissionError("Can only update own preferences")
     
     if receive_rent is not None:
         occupant.receive_rent_notifications = receive_rent
