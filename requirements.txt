@@ -12,3 +12,4 @@ Pillow
 beautifulsoup4
 lxml
 aiohttp
+sentry-sdk>=1.40.0
