@@ -21,16 +21,19 @@ async def allocate_payment(
 ) -> List[PaymentAllocation]:
     """
     Distribute payment amount across pending charges using FIFO.
+    Uses row-level lock to prevent double allocation during concurrent calls.
     
     Algorithm:
-    1. Get payment and stay
-    2. Find all unpaid/partially paid charges (oldest first)
-    3. For each charge:
+    1. Lock payment row to prevent concurrent allocation
+    2. Check if already fully allocated (idempotent)
+    3. Get payment and stay
+    4. Find all unpaid/partially paid charges (oldest first)
+    5. For each charge:
        - Calculate remaining amount on charge
        - Allocate min(remaining_payment, remaining_on_charge)
        - Create PaymentAllocation record
        - If charge fully paid, mark as confirmed
-    4. If payment > all charges: store remainder as unallocated (advance)
+    6. If payment > all charges: store remainder as unallocated (advance)
     
     Args:
         session: Database session
@@ -41,10 +44,15 @@ async def allocate_payment(
     """
     import logging
     
-    # Get payment
-    payment_stmt = select(Payment).where(Payment.id == payment_id)
-    payment_result = await session.execute(payment_stmt)
-    payment = payment_result.scalar_one_or_none()
+    # LOCK PAYMENT ROW to prevent concurrent allocation
+    # This is critical for webhook scenarios where payment might be processed twice
+    lock_stmt = (
+        select(Payment)
+        .where(Payment.id == payment_id)
+        .with_for_update()  # Row-level lock
+    )
+    lock_result = await session.execute(lock_stmt)
+    payment = lock_result.scalar_one_or_none()
     
     if not payment:
         raise ValueError(f"Payment ID {payment_id} not found")
@@ -53,23 +61,15 @@ async def allocate_payment(
     # If total_amount isn't set yet (migrated data), use amount
     amount_to_allocate = payment.total_amount if payment.total_amount is not None else payment.amount
     
-    # Calculate how much is ALREADY allocated from THIS payment to avoid double counting if re-run
-    # But wait, allocate_payment logic assumes we are allocating "remaining" capacity.
-    # Current logic: takes TOTAL amount, and subtracts... wait.
-    # The logic below subtracts 'to_allocate' from 'remaining'.
-    # But 'remaining' starts as FULL amount.
-    # If we run allocate_payment twice, we might re-allocate.
-    # We should check payment.allocated_amount too.
-    
+    # Calculate how much is ALREADY allocated
     already_allocated = float(payment.allocated_amount or 0)
     remaining = float(amount_to_allocate) - already_allocated
     
     logging.info(f"Allocating payment {payment_id}. Total: {amount_to_allocate}, Already: {already_allocated}, Remaining: {remaining}")
     
-    allocations = []
-    
+    # IDEMPOTENCY CHECK: If already fully allocated, return empty list
     if remaining <= 0.01:
-        logging.info(f"Payment {payment_id} fully allocated.")
+        logging.info(f"Payment {payment_id} already fully allocated. Skipping.")
         return []
 
     # Get all charges for stay (rent + comm), ordered by month (FIFO)

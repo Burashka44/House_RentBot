@@ -9,17 +9,36 @@ async def get_tenant_by_tg_id(session: AsyncSession, tg_id: int) -> Tenant | Non
     return result.scalar_one_or_none()
 
 async def get_or_create_tenant(session: AsyncSession, tg_user) -> Tenant:
+    """
+    Get or create tenant with atomic upsert to prevent race conditions.
+    Uses INSERT ... ON CONFLICT to handle concurrent creation attempts.
+    """
+    from sqlalchemy.dialects.postgresql import insert
+    
+    # First try to get existing tenant
     tenant = await get_tenant_by_tg_id(session, tg_user.id)
-    if not tenant:
-        tenant = Tenant(
-            tg_id=tg_user.id,
-            tg_username=tg_user.username,
-            full_name=tg_user.full_name,
-            status=TenantStatus.active.value,
-            personal_data_consent=False
-        )
-        session.add(tenant)
-        await session.commit()
+    if tenant:
+        return tenant
+    
+    # Use INSERT ... ON CONFLICT for atomic upsert
+    stmt = insert(Tenant).values(
+        tg_id=tg_user.id,
+        tg_username=tg_user.username,
+        full_name=tg_user.full_name,
+        status=TenantStatus.active.value,
+        personal_data_consent=False
+    ).on_conflict_do_update(
+        index_elements=['tg_id'],  # Unique constraint on tg_id
+        set_={
+            'tg_username': tg_user.username,  # Update username if changed
+            'full_name': tg_user.full_name  # Update name if changed
+        }
+    ).returning(Tenant)
+    
+    result = await session.execute(stmt)
+    tenant = result.scalar_one()
+    await session.commit()
+    
     return tenant
 
 async def set_tenant_consent(session: AsyncSession, tenant_id: int, status: bool) -> Tenant:

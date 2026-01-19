@@ -39,26 +39,49 @@ async def generate_invite(session: AsyncSession, admin_id: int, tenant_id: int =
 
 async def redeem_invite(session: AsyncSession, code: str, tg_id: int, username: str = None, full_name: str = None) -> tuple[bool, str, any]:
     """
-    Redeem an invite code.
+    Redeem an invite code with atomic update to prevent race conditions.
     Returns: (Success, Message, Object)
     Object is Tenant for role='tenant', or User for role='admin'
     """
     from bot.database.models import User, UserRole
     from bot.config import config
+    from sqlalchemy import update
     
-    # 1. Find Code
-    stmt = select(InviteCode).where(InviteCode.code == code)
+    # ATOMIC UPDATE: Mark as used only if not already used
+    # This prevents race condition where two users redeem same code
+    stmt = (
+        update(InviteCode)
+        .where(
+            InviteCode.code == code,
+            InviteCode.is_used == False,  # Critical: only if not used
+            InviteCode.expires_at > datetime.now(timezone.utc)  # And not expired
+        )
+        .values(
+            is_used=True,
+            used_at=datetime.now(timezone.utc)
+        )
+        .returning(InviteCode)
+    )
+    
     result = await session.execute(stmt)
     invite = result.scalar_one_or_none()
     
     if not invite:
-        return False, "Неверный код приглашения", None
+        # Code not found, already used, or expired
+        # Check which one to give better error message
+        check_stmt = select(InviteCode).where(InviteCode.code == code)
+        check_result = await session.execute(check_stmt)
+        existing = check_result.scalar_one_or_none()
         
-    if invite.is_used:
+        if not existing:
+            return False, "Неверный код приглашения", None
+        if existing.is_used:
             return False, "Этот код уже использован", None
-            
-    if invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
-        return False, "Срок действия кода истёк", None
+        if existing.expires_at and existing.expires_at < datetime.now(timezone.utc):
+            return False, "Срок действия кода истёк", None
+        
+        # Shouldn't reach here, but just in case
+        return False, "Код недействителен", None
     
     # 2. Logic based on Role
     if invite.role == "admin":
@@ -68,6 +91,10 @@ async def redeem_invite(session: AsyncSession, code: str, tg_id: int, username: 
         existing_user = result.scalar_one_or_none()
         
         if existing_user:
+            # Rollback invite usage
+            invite.is_used = False
+            invite.used_at = None
+            await session.commit()
             return False, f"Вы уже зарегистрированы как {existing_user.role}", None
 
         # Create Admin User
@@ -89,6 +116,10 @@ async def redeem_invite(session: AsyncSession, code: str, tg_id: int, username: 
 
     else: # Tenant
         if not invite.tenant_id:
+            # Rollback invite usage
+            invite.is_used = False
+            invite.used_at = None
+            await session.commit()
             return False, "Ошибка кода: не привязан жилец", None
     
         stmt_t = select(Tenant).where(Tenant.id == invite.tenant_id)
@@ -96,13 +127,22 @@ async def redeem_invite(session: AsyncSession, code: str, tg_id: int, username: 
         tenant = res_t.scalar_one_or_none()
         
         if not tenant:
+            # Rollback invite usage
+            invite.is_used = False
+            invite.used_at = None
+            await session.commit()
             return False, "Профиль жильца не найден", None
         
         # Check if linked (ignore negative temp IDs)
         if tenant.tg_id is not None and tenant.tg_id > 0:
             if tenant.tg_id == tg_id:
+                # Already linked to this user - idempotent
                 return True, "Вы уже привязаны к этому профилю.", tenant
             else:
+                # Rollback invite usage
+                invite.is_used = False
+                invite.used_at = None
+                await session.commit()
                 return False, "Этот профиль уже привязан к другому Telegram аккаунту.", None
 
         tenant.tg_id = tg_id
@@ -110,11 +150,8 @@ async def redeem_invite(session: AsyncSession, code: str, tg_id: int, username: 
         tenant.status = TenantStatus.active.value
         result_obj = tenant
 
-    # 3. Link & Mark Used
-    invite.is_used = True
-    invite.used_at = datetime.now(timezone.utc)
-    
-    # caller middleware commits
+    # Commit all changes
+    await session.commit()
     
     welcome_name = result_obj.full_name if hasattr(result_obj, 'full_name') else "Пользователь"
     return True, f"Успешно! Добро пожаловать, {welcome_name}.", result_obj

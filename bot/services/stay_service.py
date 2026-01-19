@@ -43,10 +43,25 @@ async def create_stay(
     """
     Create a new stay (tenant moves in).
     Validates that no other active stay exists for this object.
+    Uses row-level lock to prevent concurrent stay creation.
     Automatically creates a primary StayOccupant entry.
     """
     
-    # VALIDATION: Check for existing active stay on this object
+    # LOCK THE OBJECT ROW to prevent concurrent stay creation
+    # This is critical to prevent race condition where two admins
+    # create stays for the same object simultaneously
+    lock_stmt = (
+        select(RentalObject)
+        .where(RentalObject.id == object_id)
+        .with_for_update()  # Row-level lock
+    )
+    lock_result = await session.execute(lock_stmt)
+    rental_object = lock_result.scalar_one_or_none()
+    
+    if not rental_object:
+        raise ValueError(f"Объект ID {object_id} не найден")
+    
+    # VALIDATION: Check for existing active stay (with lock held)
     check_stmt = select(TenantStay).where(
         TenantStay.object_id == object_id,
         TenantStay.status == StayStatus.active.value
