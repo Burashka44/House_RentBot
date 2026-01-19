@@ -31,6 +31,7 @@ services:
       # Bot configuration
       BOT_TOKEN: ${BOT_TOKEN}
       ADMIN_IDS: ${ADMIN_IDS}
+      OWNER_IDS: ${OWNER_IDS}
       
       # Database configuration
       DB_HOST: postgres
