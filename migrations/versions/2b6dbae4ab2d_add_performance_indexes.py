@@ -22,48 +22,76 @@ def upgrade() -> None:
     # Critical indexes for performance
     # These columns are used in WHERE clauses and JOINs frequently
     
+    # Use raw SQL for SQLite compatibility with IF NOT EXISTS
+    from sqlalchemy import text
+    conn = op.get_bind()
+    
+    # Check if we're using SQLite
+    is_sqlite = conn.dialect.name == 'sqlite'
+    
+    # Helper function to create index if not exists
+    def create_index_safe(index_name, table_name, columns):
+        if is_sqlite:
+            # SQLite supports CREATE INDEX IF NOT EXISTS
+            cols = ', '.join(columns)
+            conn.execute(text(f'CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols})'))
+        else:
+            # PostgreSQL - use alembic's create_index
+            op.create_index(index_name, table_name, columns, unique=False)
+    
     # Tenants - tg_id used in authentication and lookups
-    op.create_index('ix_tenants_tg_id', 'tenants', ['tg_id'], unique=False)
+    create_index_safe('ix_tenants_tg_id', 'tenants', ['tg_id'])
     
     # Payments - stay_id and status used in queries
-    op.create_index('ix_payments_stay_id', 'payments', ['stay_id'], unique=False)
-    op.create_index('ix_payments_status', 'payments', ['status'], unique=False)
+    create_index_safe('ix_payments_stay_id', 'payments', ['stay_id'])
+    create_index_safe('ix_payments_status', 'payments', ['status'])
     
     # Rent charges - composite index for common query pattern
-    op.create_index('ix_rent_charges_stay_month', 'rent_charges', ['stay_id', 'month'], unique=False)
-    op.create_index('ix_rent_charges_status', 'rent_charges', ['status'], unique=False)
+    create_index_safe('ix_rent_charges_stay_month', 'rent_charges', ['stay_id', 'month'])
+    create_index_safe('ix_rent_charges_status', 'rent_charges', ['status'])
     
     # Comm charges - composite index for common query pattern
-    op.create_index('ix_comm_charges_stay_month', 'comm_charges', ['stay_id', 'month'], unique=False)
-    op.create_index('ix_comm_charges_status', 'comm_charges', ['status'], unique=False)
+    create_index_safe('ix_comm_charges_stay_month', 'comm_charges', ['stay_id', 'month'])
+    create_index_safe('ix_comm_charges_status', 'comm_charges', ['status'])
     
     # Payment allocations - foreign keys used in JOINs
-    op.create_index('ix_allocations_payment', 'payment_allocations', ['payment_id'], unique=False)
-    op.create_index('ix_allocations_charge', 'payment_allocations', ['charge_id', 'charge_type'], unique=False)
+    create_index_safe('ix_allocations_payment', 'payment_allocations', ['payment_id'])
+    create_index_safe('ix_allocations_charge', 'payment_allocations', ['charge_id', 'charge_type'])
     
     # Tenant stays - object_id and status for filtering
-    op.create_index('ix_stays_object_status', 'tenant_stays', ['object_id', 'status'], unique=False)
-    op.create_index('ix_stays_tenant', 'tenant_stays', ['tenant_id'], unique=False)
+    create_index_safe('ix_stays_object_status', 'tenant_stays', ['object_id', 'status'])
+    create_index_safe('ix_stays_tenant', 'tenant_stays', ['tenant_id'])
     
     # Invite codes - code used in redemption
-    op.create_index('ix_invite_codes_code', 'invite_codes', ['code'], unique=False)
+    create_index_safe('ix_invite_codes_code', 'invite_codes', ['code'])
     
     # Users - tg_id for authentication
-    op.create_index('ix_users_tg_id', 'users', ['tg_id'], unique=False)
+    create_index_safe('ix_users_tg_id', 'users', ['tg_id'])
 
 
 def downgrade() -> None:
     # Drop indexes in reverse order
-    op.drop_index('ix_users_tg_id', table_name='users')
-    op.drop_index('ix_invite_codes_code', table_name='invite_codes')
-    op.drop_index('ix_stays_tenant', table_name='tenant_stays')
-    op.drop_index('ix_stays_object_status', table_name='tenant_stays')
-    op.drop_index('ix_allocations_charge', table_name='payment_allocations')
-    op.drop_index('ix_allocations_payment', table_name='payment_allocations')
-    op.drop_index('ix_comm_charges_status', table_name='comm_charges')
-    op.drop_index('ix_comm_charges_stay_month', table_name='comm_charges')
-    op.drop_index('ix_rent_charges_status', table_name='rent_charges')
-    op.drop_index('ix_rent_charges_stay_month', table_name='rent_charges')
-    op.drop_index('ix_payments_status', table_name='payments')
-    op.drop_index('ix_payments_stay_id', table_name='payments')
-    op.drop_index('ix_tenants_tg_id', table_name='tenants')
+    # Use IF EXISTS for safety
+    from sqlalchemy import text
+    conn = op.get_bind()
+    is_sqlite = conn.dialect.name == 'sqlite'
+    
+    def drop_index_safe(index_name, table_name=None):
+        if is_sqlite:
+            conn.execute(text(f'DROP INDEX IF EXISTS {index_name}'))
+        else:
+            op.drop_index(index_name, table_name=table_name)
+    
+    drop_index_safe('ix_users_tg_id', 'users')
+    drop_index_safe('ix_invite_codes_code', 'invite_codes')
+    drop_index_safe('ix_stays_tenant', 'tenant_stays')
+    drop_index_safe('ix_stays_object_status', 'tenant_stays')
+    drop_index_safe('ix_allocations_charge', 'payment_allocations')
+    drop_index_safe('ix_allocations_payment', 'payment_allocations')
+    drop_index_safe('ix_comm_charges_status', 'comm_charges')
+    drop_index_safe('ix_comm_charges_stay_month', 'comm_charges')
+    drop_index_safe('ix_rent_charges_status', 'rent_charges')
+    drop_index_safe('ix_rent_charges_stay_month', 'rent_charges')
+    drop_index_safe('ix_payments_status', 'payments')
+    drop_index_safe('ix_payments_stay_id', 'payments')
+    drop_index_safe('ix_tenants_tg_id', 'tenants')
