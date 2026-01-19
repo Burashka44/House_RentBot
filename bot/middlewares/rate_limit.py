@@ -39,6 +39,10 @@ class RateLimitMiddleware(BaseMiddleware):
         self.message = message
         self.requests: Dict[int, List[datetime]] = defaultdict(list)
         
+        # Cache admin IDs to avoid repeated imports
+        from bot.config import config
+        self.admin_ids = set(config.OWNER_IDS + config.ADMIN_IDS)
+        
         logging.info(f"Rate limiter initialized: {rate} requests per {per} seconds")
     
     async def __call__(
@@ -61,9 +65,8 @@ class RateLimitMiddleware(BaseMiddleware):
         if not user_id:
             return await handler(event, data)
         
-        # Skip rate limiting for admins/owners
-        from bot.config import config
-        if user_id in (config.OWNER_IDS + config.ADMIN_IDS):
+        # Skip rate limiting for admins/owners (cached)
+        if user_id in self.admin_ids:
             return await handler(event, data)
         
         now = datetime.now()

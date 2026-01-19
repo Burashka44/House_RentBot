@@ -117,8 +117,8 @@ class TenantStay(Base):
     __tablename__ = "tenant_stays"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
-    object_id: Mapped[int] = mapped_column(ForeignKey("objects.id", ondelete="CASCADE"))
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="RESTRICT"))
+    object_id: Mapped[int] = mapped_column(ForeignKey("objects.id", ondelete="RESTRICT"))
     
     date_from: Mapped[date] = mapped_column(DATE)
     date_to: Mapped[Optional[date]] = mapped_column(DATE, nullable=True)
