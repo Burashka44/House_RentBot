@@ -96,6 +96,22 @@ async def redeem_invite(session: AsyncSession, code: str, tg_id: int, username: 
             invite.used_at = None
             await session.commit()
             return False, f"Вы уже зарегистрированы как {existing_user.role}", None
+        
+        # NEW: Check if registered as tenant
+        tenant_stmt = select(Tenant).where(Tenant.tg_id == tg_id)
+        tenant_result = await session.execute(tenant_stmt)
+        existing_tenant = tenant_result.scalar_one_or_none()
+        
+        if existing_tenant:
+            # Rollback invite usage
+            invite.is_used = False
+            invite.used_at = None
+            await session.commit()
+            return False, (
+                f"Вы уже зарегистрированы как жилец ({existing_tenant.full_name}). "
+                f"Для получения прав администратора обратитесь к владельцу системы. "
+                f"Ваш Telegram ID: {tg_id}"
+            ), None
 
         # Create Admin User
         new_admin = User(
