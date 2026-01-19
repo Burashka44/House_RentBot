@@ -296,17 +296,30 @@ async def mark_charge_as_paid(
     from datetime import datetime, timezone
     from bot.config import config
     
-    # Get the charge
+    # LOCK CHARGE ROW to prevent concurrent marking
     if charge_type == "rent":
-        charge = await session.get(RentCharge, charge_id)
+        lock_stmt = (
+            select(RentCharge)
+            .where(RentCharge.id == charge_id)
+            .with_for_update()
+        )
+        result = await session.execute(lock_stmt)
+        charge = result.scalar_one_or_none()
     elif charge_type == "comm":
-        charge = await session.get(CommCharge, charge_id)
+        lock_stmt = (
+            select(CommCharge)
+            .where(CommCharge.id == charge_id)
+            .with_for_update()
+        )
+        result = await session.execute(lock_stmt)
+        charge = result.scalar_one_or_none()
     else:
         raise ValueError(f"Invalid charge_type: {charge_type}")
     
     if not charge:
         raise ValueError(f"Charge {charge_type}#{charge_id} not found")
     
+    # IDEMPOTENCY CHECK: If already paid, raise error
     if charge.status == ChargeStatus.paid.value:
         raise ValueError(f"Charge {charge_type}#{charge_id} is already paid")
     
@@ -372,6 +385,7 @@ async def cancel_payment(
 ) -> bool:
     """
     Cancel a payment (for erroneous uploads).
+    Uses row-level lock to prevent concurrent cancellation.
     
     - Checks permissions (OWNER or object owner)
     - Rolls back allocations
@@ -391,23 +405,30 @@ async def cancel_payment(
         ValueError: If payment not found or already processed
         PermissionError: If admin lacks permission
     """
+    import logging
     from datetime import datetime
     from bot.config import config
     from sqlalchemy import delete
     
-    # Get payment with stay and object
-    payment_stmt = (
+    # LOCK PAYMENT ROW to prevent concurrent cancellation
+    lock_stmt = (
         select(Payment)
         .where(Payment.id == payment_id)
         .options(
             selectinload(Payment.stay).selectinload(TenantStay.rental_object)
         )
+        .with_for_update()  # Row-level lock
     )
-    result = await session.execute(payment_stmt)
+    result = await session.execute(lock_stmt)
     payment = result.scalar_one_or_none()
     
     if not payment:
         raise ValueError(f"Payment {payment_id} not found")
+    
+    # IDEMPOTENCY CHECK: If already cancelled, return success
+    if payment.status == 'cancelled':
+        logging.info(f"Payment {payment_id} already cancelled")
+        return True
     
     # Check status - can only cancel pending payments
     if payment.status not in ['pending_manual', 'pending']:

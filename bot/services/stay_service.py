@@ -109,30 +109,49 @@ async def create_stay(
     return stay
 
 async def end_stay(session: AsyncSession, stay_id: int) -> TenantStay:
-    stmt = select(TenantStay).where(TenantStay.id == stay_id)
-    result = await session.execute(stmt)
+    """
+    End a stay (tenant moves out).
+    Uses row-level lock to prevent concurrent archiving.
+    """
+    import logging
+    
+    # LOCK STAY ROW to prevent concurrent end_stay calls
+    lock_stmt = (
+        select(TenantStay)
+        .where(TenantStay.id == stay_id)
+        .with_for_update()
+    )
+    result = await session.execute(lock_stmt)
     stay = result.scalar_one_or_none()
     
-    if stay:
-        stay.date_to = date.today()
-        stay.status = StayStatus.archived.value
-        
-        # Mark all occupants as left
-        await session.execute(
-            update(StayOccupant)
-            .where(StayOccupant.stay_id == stay_id, StayOccupant.left_date.is_(None))
-            .values(left_date=date.today())
-        )
-        
-        # Free the object
-        await session.execute(
-            update(RentalObject)
-            .where(RentalObject.id == stay.object_id)
-            .values(status=ObjectStatus.free.value)
-        )
-        
-        await session.commit()
-        
+    if not stay:
+        raise ValueError(f"Stay {stay_id} not found")
+    
+    # IDEMPOTENCY CHECK: If already archived, return
+    if stay.status == StayStatus.archived.value:
+        logging.info(f"Stay {stay_id} already archived")
+        return stay
+    
+    # End the stay
+    stay.date_to = date.today()
+    stay.status = StayStatus.archived.value
+    
+    # Mark all occupants as left
+    await session.execute(
+        update(StayOccupant)
+        .where(StayOccupant.stay_id == stay_id, StayOccupant.left_date.is_(None))
+        .values(left_date=date.today())
+    )
+    
+    # Free the object
+    await session.execute(
+        update(RentalObject)
+        .where(RentalObject.id == stay.object_id)
+        .values(status=ObjectStatus.free.value)
+    )
+    
+    await session.commit()
+    
     return stay
 
 
