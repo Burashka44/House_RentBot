@@ -51,6 +51,42 @@ services:
       - bot_network
     restart: unless-stopped
 
+  # Automated Database Backup
+  backup:
+    image: postgres:15-alpine
+    container_name: rentbot_backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${DB_USER:-postgres}
+      PGPASSWORD: ${DB_PASS:-postgres}
+      PGDATABASE: ${DB_NAME:-rent_bot}
+    volumes:
+      - ./backups:/backups
+    networks:
+      - bot_network
+    # Daily backup at 3 AM, keep last 7 days
+    command: >
+      sh -c "
+        echo 'Backup service started. Daily backups at 3 AM.';
+        while true; do
+          current_hour=$$(date +%H);
+          if [ $$current_hour -eq 3 ]; then
+            echo 'Starting backup...';
+            pg_dump -Fc -f /backups/backup_$$(date +\%Y\%m\%d_\%H\%M\%S).dump;
+            echo 'Backup completed: backup_'$$(date +\%Y\%m\%d_\%H\%M\%S)'.dump';
+            find /backups -name '*.dump' -mtime +7 -delete;
+            echo 'Old backups cleaned (7+ days)';
+            sleep 3600;
+          else
+            sleep 1800;
+          fi;
+        done
+      "
+    restart: unless-stopped
+
 volumes:
   postgres_data:
 
