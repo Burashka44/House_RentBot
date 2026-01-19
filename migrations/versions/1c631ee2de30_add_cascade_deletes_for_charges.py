@@ -19,9 +19,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add CASCADE delete for charges
-    # When a stay is deleted, all associated charges should be deleted automatically
+    # SQLite doesn't support ALTER CONSTRAINT
+    # For SQLite, we need to use batch mode or skip this migration
+    # For PostgreSQL, we can alter constraints
     
+    from sqlalchemy import text
+    conn = op.get_bind()
+    
+    # Check dialect
+    if conn.dialect.name == 'sqlite':
+        # SQLite: Skip constraint modification
+        # Constraints will be created correctly in new tables
+        # Existing tables will work with default RESTRICT
+        print("SQLite detected: Skipping CASCADE constraint modification")
+        print("Note: New tables will have CASCADE, existing tables use RESTRICT")
+        return
+    
+    # PostgreSQL: Modify constraints
     # RentCharge.stay_id → CASCADE
     op.drop_constraint('rent_charges_stay_id_fkey', 'rent_charges', type_='foreignkey')
     op.create_foreign_key(
@@ -43,6 +57,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Revert to default RESTRICT behavior
+    from sqlalchemy import text
+    conn = op.get_bind()
+    
+    if conn.dialect.name == 'sqlite':
+        print("SQLite detected: Skipping constraint revert")
+        return
     
     # RentCharge.stay_id → RESTRICT (default)
     op.drop_constraint('rent_charges_stay_id_fkey', 'rent_charges', type_='foreignkey')
