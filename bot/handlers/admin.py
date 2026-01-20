@@ -2547,7 +2547,10 @@ async def report_monthly(call: CallbackQuery, session: AsyncSession):
     text = UIMessages.header("Платежи за месяц", "💰")
     text += f"Подтверждённые платежи: <b>{format_amount(total)}</b>"
     
-    await call.message.edit_text(text)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="reports_menu")]
+    ])
+    await call.message.edit_text(text, reply_markup=kb)
     await call.answer()
 
 
@@ -2631,7 +2634,10 @@ async def report_objects(call: CallbackQuery, session: AsyncSession):
             text += f"🏠 <b>{addr}</b>\n"
             text += f"   ➖ Свободно\n\n"
     
-    await call.message.edit_text(text)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="reports_menu")]
+    ])
+    await call.message.edit_text(text, reply_markup=kb)
     await call.answer()
 
 
