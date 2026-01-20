@@ -62,6 +62,11 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession, 
     is_owner = user_id in config.OWNER_IDS
     is_admin = user_id in config.ADMIN_IDS or is_owner
     
+    # DEBUG: Log values
+    import logging
+    logging.info(f"cmd_start: user_id={user_id}, is_owner={is_owner}, is_admin={is_admin}, tenant={tenant}")
+    logging.info(f"config.OWNER_IDS={config.OWNER_IDS}, config.ADMIN_IDS={config.ADMIN_IDS}")
+    
     # Admin/Owner WITHOUT tenant record - show admin menu directly
     if is_admin and not tenant:
         text = UIMessages.header("Добро пожаловать!", UIEmojis.HOME)

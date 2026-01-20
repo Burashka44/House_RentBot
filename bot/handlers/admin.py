@@ -1079,6 +1079,7 @@ async def reports_menu_msg(message: Message):
         [InlineKeyboardButton(text="📋 Должники", callback_data="report_debtors")],
         [InlineKeyboardButton(text="💰 Платежи за месяц", callback_data="report_monthly")],
         [InlineKeyboardButton(text="🏠 Статус адресов", callback_data="report_objects")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="main_menu")]
     ])
     await message.answer(text, reply_markup=kb)
 
@@ -1093,6 +1094,7 @@ async def reports_menu_callback(call: CallbackQuery):
         [InlineKeyboardButton(text="📋 Должники", callback_data="report_debtors")],
         [InlineKeyboardButton(text="💰 Платежи за месяц", callback_data="report_monthly")],
         [InlineKeyboardButton(text="🏠 Статус адресов", callback_data="report_objects")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="main_menu")]
     ])
     await call.message.edit_text(text, reply_markup=kb)
     await call.answer()
