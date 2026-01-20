@@ -198,6 +198,23 @@ async def skip_uk_rso_callback(call: CallbackQuery, state: FSMContext):
 # list_objects callback moved to line ~1653 (uses list_objects_msg)
 
 # --- Add Stay Flow ---
+@router.callback_query(F.data.startswith("create_tenant_for_obj_"))
+async def create_tenant_for_object(call: CallbackQuery, state: FSMContext):
+    """Start tenant creation flow with pre-selected object"""
+    obj_id = int(call.data.split("_")[-1])
+    
+    # Save object_id to state
+    await state.update_data(preselected_object_id=obj_id)
+    
+    from bot.utils.ui import UIMessages
+    text = "👤 Введите Telegram ID жильца:\n\n"
+    text += "💡 Жилец должен сначала запустить бота и получить свой ID.\n"
+    text += "Для отмены введите /cancel"
+    
+    await call.message.answer(text)
+    await state.set_state(AddStayState.waiting_for_tenant_id)
+    await call.answer()
+
 @router.callback_query(F.data == "add_stay_start")
 async def start_add_stay(call: CallbackQuery, state: FSMContext):
     from bot.utils.ui import UIMessages
@@ -243,6 +260,17 @@ async def process_stay_tenant(message: Message, state: FSMContext, session: Asyn
 
     await state.update_data(tenant_id=tenant.id, tenant_name=tenant.full_name)
     
+    # Check if object was preselected (from object menu button)
+    data = await state.get_data()
+    preselected_obj_id = data.get('preselected_object_id')
+    
+    if preselected_obj_id:
+        # Skip object selection, go directly to rent amount
+        await state.update_data(object_id=preselected_obj_id)
+        await message.answer("Введите сумму аренды (число, например 30000):")
+        await state.set_state(AddStayState.waiting_for_rent_amount)
+        return
+    
     # List objects to select
     objects = await get_all_objects(session)
     
@@ -252,6 +280,20 @@ async def process_stay_tenant(message: Message, state: FSMContext, session: Asyn
             "Сначала добавьте адрес через меню Настройки → Добавить адрес"
         )
         await state.clear()
+        return
+    
+    if not providers:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Привязать провайдера", callback_data=f"link_rso_to_obj_{obj_id}")],
+            [InlineKeyboardButton(text="◀️ К объекту", callback_data=f"manage_obj_{obj_id}")]
+        ])
+        await call.message.edit_text(
+            "💡 <b>Провайдеры объекта</b>\n\n"
+            "Провайдеры не привязаны.\n"
+            "Сначала создайте их в общем меню.",
+            reply_markup=kb
+        )
+        await call.answer()
         return
     
     kb_rows = []
@@ -765,6 +807,7 @@ async def manage_object(call: CallbackQuery, session: AsyncSession):
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_obj_{obj.id}")],
+        [InlineKeyboardButton(text="👤 Заселить жильца", callback_data=f"create_tenant_for_obj_{obj.id}")],
         [InlineKeyboardButton(text="💡 Провайдеры (РСО)", callback_data=f"obj_rso_manage_{obj.id}")],
         [InlineKeyboardButton(text="📊 Финансы (Год)", callback_data=f"obj_stats_{obj.id}")],
         [InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_obj_{obj.id}")],
