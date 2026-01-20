@@ -57,7 +57,5 @@ class Config:
 
 config = Config()
 
-# Log configuration on startup
-logging.info(f"Bot configured with {len(config.OWNER_IDS)} owners, {len(config.ADMIN_IDS)} admins")
-logging.info(f"Database: {config.DATABASE_URL.split('@')[1] if '@' in config.DATABASE_URL else 'SQLite'}")
-logging.info(f"Ollama OCR: {'enabled' if config.OLLAMA_HOST else 'disabled (using Tesseract)'}")
+# Note: Logging is configured in bot/main.py
+# Don't log here as it executes at import time before logging is set up
