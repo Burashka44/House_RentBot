@@ -21,6 +21,7 @@ class ConsentMiddleware(BaseMiddleware):
         # Skip consent check for owners and admins
         from bot.config import config
         if user.id in config.OWNER_IDS or user.id in config.ADMIN_IDS:
+            data["tenant"] = None  # Inject None so handlers don't crash
             return await handler(event, data)
         
         # Ensure session exists (injected by DbSessionMiddleware)
