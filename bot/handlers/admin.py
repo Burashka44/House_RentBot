@@ -2446,8 +2446,6 @@ async def admin_contacts_callback(call: CallbackQuery, session: AsyncSession):
                 text += f"📲 {c.telegram}\n"
             if c.email:
                 text += f"📧 {c.email}\n"
-            if c.notes:
-                text += f"💬 {c.notes}\n"
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Добавить контакт", callback_data="add_admin_contact")],
