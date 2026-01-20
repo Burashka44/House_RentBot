@@ -17,10 +17,14 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession, 
     user_id = message.from_user.id
     
     # Check for invite code in command args (deep linking)
-    # /start code123
-    args = message.text.split()
-    if len(args) > 1:
-        code = args[1].strip()
+    # When user clicks t.me/bot?start=CODE, Telegram sends "/start CODE"
+    code = None
+    if message.text and ' ' in message.text:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) > 1:
+            code = parts[1].strip()
+    
+    if code:
         username = message.from_user.username
         full_name = message.from_user.full_name
         
