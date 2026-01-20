@@ -275,9 +275,14 @@ async def process_stay_tenant(message: Message, state: FSMContext, session: Asyn
     objects = await get_all_objects(session)
     
     if not objects:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить адрес", callback_data="add_object_start")],
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data="cancel_add_stay")]
+        ])
         await message.answer(
             "⚠️ Нет адресов для заселения.\n"
-            "Сначала добавьте адрес через меню Настройки → Добавить адрес"
+            "Сначала добавьте адрес:",
+            reply_markup=kb
         )
         await state.clear()
         return
@@ -2506,9 +2511,9 @@ async def add_contact_phone(message: Message, state: FSMContext, session: AsyncS
 # === NAVIGATION CALLBACKS ===
 
 @router.callback_query(F.data == "list_tenants")
-async def list_tenants_callback(call: CallbackQuery):
+async def list_tenants_callback(call: CallbackQuery, session: AsyncSession):
     """Forward to tenants list"""
-    await list_tenants_msg(call.message)
+    await list_tenants_msg(call.message, session)
     await call.answer()
 
 
