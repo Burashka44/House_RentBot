@@ -18,6 +18,11 @@ class ConsentMiddleware(BaseMiddleware):
         if not user:
             return await handler(event, data)
         
+        # Skip consent check for owners and admins
+        from bot.config import config
+        if user.id in config.OWNER_IDS or user.id in config.ADMIN_IDS:
+            return await handler(event, data)
+        
         # Ensure session exists (injected by DbSessionMiddleware)
         session: AsyncSession = data.get("session")
         if not session:
