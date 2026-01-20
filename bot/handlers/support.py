@@ -25,6 +25,12 @@ async def tenant_message_start(message: Message, state: FSMContext, tenant):
 async def tenant_message_process(message: Message, state: FSMContext, tenant, session: AsyncSession):
     from bot.config import config
     
+    # Skip if tenant is None (owners/admins)
+    if not tenant:
+        await message.answer("⚠️ Эта функция доступна только для жильцов.")
+        await state.clear()
+        return
+    
     # Check if we have a pre-uploaded photo from "smart handler" in state
     data = await state.get_data()
     temp_file_id = data.get("temp_file_id")
