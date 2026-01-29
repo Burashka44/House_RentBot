@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, date
 from typing import Optional, List
-from sqlalchemy import BigInteger, String, Boolean, ForeignKey, Integer, Numeric, Date, DateTime, JSON, Text, DATE, UniqueConstraint, Index
+from sqlalchemy import BigInteger, String, Boolean, ForeignKey, Integer, Numeric, Date, DateTime, JSON, Text, DATE, UniqueConstraint, Index, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from bot.database.core import Base
@@ -74,7 +74,7 @@ class Tenant(Base):
     email: Mapped[Optional[str]] = mapped_column(String)
     passport_data: Mapped[Optional[str]] = mapped_column(String)  # Simple string for MVP
     
-    status: Mapped[TenantStatus] = mapped_column(String, default=TenantStatus.active.value)
+    status: Mapped[TenantStatus] = mapped_column(SAEnum(TenantStatus, name="tenantstatus"), default=TenantStatus.active)
     
     personal_data_consent: Mapped[bool] = mapped_column(Boolean, default=False)
     consent_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -92,7 +92,7 @@ class RentalObject(Base): # Renamed to avoid reserved word 'Object' confusion
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[int] = mapped_column(Integer) # External logic or simple config
     address: Mapped[str] = mapped_column(String)
-    status: Mapped[ObjectStatus] = mapped_column(String, default=ObjectStatus.free.value)
+    status: Mapped[ObjectStatus] = mapped_column(SAEnum(ObjectStatus, name="objectstatus"), default=ObjectStatus.free)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     settings: Mapped["ObjectSettings"] = relationship(back_populates="rental_object", uselist=False)
@@ -129,7 +129,7 @@ class TenantStay(Base):
     
     notifications_mode: Mapped[str] = mapped_column(String, default="full")
     tax_rate: Mapped[float] = mapped_column(Numeric(5, 2), default=0.0)
-    status: Mapped[StayStatus] = mapped_column(String, default=StayStatus.active.value)
+    status: Mapped[StayStatus] = mapped_column(SAEnum(StayStatus, name="staystatus"), default=StayStatus.active)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tenant: Mapped["Tenant"] = relationship(back_populates="stays")
@@ -191,7 +191,7 @@ class CommProvider(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     object_id: Mapped[Optional[int]] = mapped_column(ForeignKey("objects.id", ondelete="CASCADE"), nullable=True)
-    service_type: Mapped[CommServiceType] = mapped_column(String)
+    service_type: Mapped[CommServiceType] = mapped_column(SAEnum(CommServiceType, name="commservicetype"))
     name: Mapped[str] = mapped_column(String)
     short_keywords: Mapped[List[str]] = mapped_column(JSON, default=[]) # List of strings
     account_number: Mapped[Optional[str]] = mapped_column(String)
@@ -221,7 +221,7 @@ class RentCharge(Base):
     base_amount: Mapped[Optional[float]] = mapped_column(Numeric(12, 2)) # Amount without tax
     tax_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
     tax_rate_snapshot: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
-    status: Mapped[ChargeStatus] = mapped_column(String, default=ChargeStatus.pending.value)
+    status: Mapped[ChargeStatus] = mapped_column(SAEnum(ChargeStatus, name="chargestatus"), default=ChargeStatus.pending)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     stay: Mapped["TenantStay"] = relationship(back_populates="rent_charges")
@@ -234,10 +234,10 @@ class CommCharge(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     stay_id: Mapped[int] = mapped_column(ForeignKey("tenant_stays.id"))
     provider_id: Mapped[int] = mapped_column(ForeignKey("comm_providers.id"))
-    service_type: Mapped[CommServiceType] = mapped_column(String)
+    service_type: Mapped[CommServiceType] = mapped_column(SAEnum(CommServiceType, name="commservicetype"))
     month: Mapped[date] = mapped_column(DATE)
     amount: Mapped[float] = mapped_column(Numeric(12, 2))
-    status: Mapped[ChargeStatus] = mapped_column(String, default=ChargeStatus.pending.value)
+    status: Mapped[ChargeStatus] = mapped_column(SAEnum(ChargeStatus, name="chargestatus"), default=ChargeStatus.pending)
     source: Mapped[str] = mapped_column(String, default="manual")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -251,7 +251,7 @@ class Payment(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     stay_id: Mapped[int] = mapped_column(ForeignKey("tenant_stays.id"))
-    type: Mapped[PaymentType] = mapped_column(String)
+    type: Mapped[PaymentType] = mapped_column(SAEnum(PaymentType, name="paymenttype"))
     
     # Generic FK not easily supported in simple SQLAlchemy, so we can use ID or nullable FKs.
     # We will use specific FKs
@@ -266,7 +266,7 @@ class Payment(Base):
     unallocated_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)  # Advance
     
     method: Mapped[str] = mapped_column(String, default="online")
-    status: Mapped[PaymentStatus] = mapped_column(String, default=PaymentStatus.pending_manual.value)
+    status: Mapped[PaymentStatus] = mapped_column(SAEnum(PaymentStatus, name="paymentstatus"), default=PaymentStatus.pending_manual)
     source: Mapped[str] = mapped_column(String, default="photo")
     
     # Manual payment marking (for admin-marked payments without receipt)
@@ -319,7 +319,7 @@ class PaymentReceipt(Base):
     parsed_purpose: Mapped[Optional[str]] = mapped_column(String)
     parsed_raw_json: Mapped[Optional[dict]] = mapped_column(JSON)
     
-    decision: Mapped[ReceiptDecision] = mapped_column(String)
+    decision: Mapped[ReceiptDecision] = mapped_column(SAEnum(ReceiptDecision, name="receiptdecision"))
     reject_reason: Mapped[Optional[str]] = mapped_column(String)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -352,7 +352,7 @@ class SupportMessage(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     stay_id: Mapped[int] = mapped_column(ForeignKey("tenant_stays.id"))
-    from_role: Mapped[Role] = mapped_column(String)
+    from_role: Mapped[Role] = mapped_column(SAEnum(Role, name="role"))
     text: Mapped[Optional[str]] = mapped_column(Text)
     
     is_read_by_admin: Mapped[bool] = mapped_column(Boolean, default=False)
