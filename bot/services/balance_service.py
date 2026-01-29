@@ -130,8 +130,8 @@ async def get_stay_balance(
     advances = float(advance_result.scalar())
     
     total_charged = rent_charged + comm_charged
-    total_paid = rent_paid + comm_paid  # FIXED: не включаем advances!
-    balance = total_charged - total_paid - advances  # FIXED: вычитаем advances отдельно
+    total_paid = rent_paid + comm_paid + advances
+    balance = total_charged - total_paid
     
     # 4. Find unpaid charges
     unpaid_charges = await _get_unpaid_charges(session, stay_id, as_of_date)

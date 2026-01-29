@@ -95,6 +95,11 @@ async def tenant_menu(message: Message, tenant, session: AsyncSession):
     from bot.services.balance_service import get_stay_balance
     
     text = UIMessages.header("Личный кабинет", UIEmojis.TENANT)
+    
+    if not tenant:
+        await message.answer(UIMessages.error("Вы не зарегистрированы как жилец"))
+        return
+
     text += f"Здравствуйте, <b>{tenant.full_name}</b>!\n\n"
     
     # Try to get balance info

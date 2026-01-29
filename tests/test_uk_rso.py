@@ -13,9 +13,12 @@ from bot.services.rso_service import (
     get_rso_by_uk, 
     assign_rso_to_object, 
     get_object_rso_links, 
-    update_rso_account
+    update_rso_account_details
 )
 
+import pytest
+
+@pytest.mark.asyncio
 async def test_uk_rso_flow():
     print("🚀 Starting UK/RSO Service Test...")
     
@@ -79,7 +82,7 @@ async def test_uk_rso_flow():
         # 7. Update Account Number
         print("Step 6: Updating Account Number...")
         new_acc = "100-200-300"
-        success = await update_rso_account(session, obj.id, provider.id, new_acc)
+        success = await update_rso_account_details(session, obj.id, provider.id, new_acc)
         assert success is True
         
         # Verify

@@ -31,16 +31,13 @@ def upgrade() -> None:
     
     # Helper function to create index if not exists
     def create_index_safe(index_name, table_name, columns):
-        if is_sqlite:
-            # SQLite supports CREATE INDEX IF NOT EXISTS
-            cols = ', '.join(columns)
-            conn.execute(text(f'CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols})'))
-        else:
-            # PostgreSQL - use alembic's create_index
-            op.create_index(index_name, table_name, columns, unique=False)
+        # SQLite and PostgreSQL both support CREATE INDEX IF NOT EXISTS
+        # We use raw SQL to ensure idempotency and avoid "relation already exists" errors
+        cols = ', '.join(columns)
+        conn.execute(text(f'CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols})'))
     
     # Tenants - tg_id used in authentication and lookups
-    create_index_safe('ix_tenants_tg_id', 'tenants', ['tg_id'])
+    # create_index_safe('ix_tenants_tg_id', 'tenants', ['tg_id'])
     
     # Payments - stay_id and status used in queries
     create_index_safe('ix_payments_stay_id', 'payments', ['stay_id'])

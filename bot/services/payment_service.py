@@ -87,6 +87,9 @@ async def allocate_payment(
     
     all_charges.sort(key=lambda x: x[1].month)
     
+    # Initialize allocations list
+    allocations = []
+
     # Allocate
     for charge_type, charge in all_charges:
         if remaining <= 0.01:
