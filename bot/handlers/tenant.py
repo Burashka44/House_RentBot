@@ -85,7 +85,7 @@ async def status_command(message: Message, tenant, session: AsyncSession):
         [InlineKeyboardButton(text=f"{UIEmojis.BACK} В меню", callback_data="back_to_tenant_menu")]
     ])
     
-    await message.answer(text, reply_markup=kb)
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 @router.message(F.text.contains("Личный кабинет"))
 @router.message(Command("menu"))
@@ -97,7 +97,7 @@ async def tenant_menu(message: Message, tenant, session: AsyncSession):
     text = UIMessages.header("Личный кабинет", UIEmojis.TENANT)
     
     if not tenant:
-        await message.answer(UIMessages.error("Вы не зарегистрированы как жилец"))
+        await message.answer(UIMessages.error("Вы не зарегистрированы как жилец"), parse_mode="HTML")
         return
 
     text += f"Здравствуйте, <b>{tenant.full_name}</b>!\n\n"
@@ -128,11 +128,11 @@ async def tenant_menu(message: Message, tenant, session: AsyncSession):
         [InlineKeyboardButton(text=f"{UIEmojis.MESSAGE} Написать сообщение", callback_data="send_message")],
     ])
     
-    await message.answer(text, reply_markup=kb)
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data == "upload_receipt_start")
 async def start_upload_receipt(call: CallbackQuery, state: FSMContext):
-    await call.message.answer("📸 <b>Отправьте фото чека или файл (PDF).</b>")
+    await call.message.answer("📸 <b>Отправьте фото чека или файл (PDF).</b>", parse_mode="HTML")
     await state.set_state(ReceiptState.waiting_for_photo)
     await call.answer()
 

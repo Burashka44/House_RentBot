@@ -31,7 +31,7 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession, 
         success, msg, result_obj = await redeem_invite(session, code, user_id, username, full_name)
         
         if success:
-            await message.answer(UIMessages.success(msg))
+            await message.answer(UIMessages.success(msg), parse_mode="HTML")
             # Refresh context (tenant or admin role might have changed)
             # We can't easily force-refresh middleware context here, so proper handling relies on the user continuing interaction
             
@@ -47,7 +47,7 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession, 
                 text += UIMessages.section("Быстрые действия")
                 text += f"Панель управления доступна по кнопке ниже.\n"
                 
-                await message.answer(text, reply_markup=UIKeyboards.main_reply_keyboard(is_admin, is_owner))
+                await message.answer(text, reply_markup=UIKeyboards.main_reply_keyboard(is_admin, is_owner), parse_mode="HTML")
                 await state.clear()
                 return
 
@@ -56,7 +56,7 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession, 
                 tenant = result_obj # Use the freshly linked tenant
                 # Fallthrough to standard tenant logic
         else:
-            await message.answer(UIMessages.error(msg))
+            await message.answer(UIMessages.error(msg), parse_mode="HTML")
             # Fallthrough to normal check
             
     is_owner = user_id in config.OWNER_IDS
@@ -81,7 +81,7 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession, 
         text += UIMessages.section("Быстрые действия")
         text += f"Используйте меню внизу экрана для навигации.\n"
         
-        await message.answer(text, reply_markup=UIKeyboards.main_reply_keyboard(is_admin, is_owner))
+        await message.answer(text, reply_markup=UIKeyboards.main_reply_keyboard(is_admin, is_owner), parse_mode="HTML")
         await state.clear()
         return
     
@@ -92,7 +92,7 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession, 
         text += "Если у вас его нет, обратитесь к администратору.\n\n"
         text += "🔑 <b>Введите ваш код приглашения:</b>"
         
-        await message.answer(text)
+        await message.answer(text, parse_mode="HTML")
         await state.set_state(GuestState.waiting_for_code)
         return
     
@@ -111,9 +111,9 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession, 
         text += UIMessages.section("Быстрые действия")
         text += f"Используйте меню внизу экрана для навигации.\n"
         
-        await message.answer(text, reply_markup=UIKeyboards.main_reply_keyboard(is_admin, is_owner))
+        await message.answer(text, reply_markup=UIKeyboards.main_reply_keyboard(is_admin, is_owner), parse_mode="HTML")
     else:
-        await message.answer(UIMessages.warning("Требуется согласие на обработку данных"))
+        await message.answer(UIMessages.warning("Требуется согласие на обработку данных"), parse_mode="HTML")
 
 @router.message(Command("id"))
 async def cmd_id(message: Message):
